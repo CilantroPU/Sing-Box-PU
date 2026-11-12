@@ -1,18 +1,18 @@
 # sing-box 一键脚本
 
-一条命令安装 sing-box 并生成节点，全程菜单管理：添加 / 更改 / 查看 / 删除节点、服务启停、核心与脚本更新、卸载。小规格 VPS 优化：自编译精简核心、纯 IPv6 机器可装可用。
+一条命令安装 sing-box ，全程菜单管理。小规格 VPS 优化：自编译精简核心、纯 IPv6 机器可装可用。
 
 当前版本：脚本 **v5.18**，核心 **sing-box 1.14.4（精简版）**。
 
 ## 功能特点
 
-- **8 种协议**：TUIC / Naive / AnyTLS / Snell v6 / Hysteria2 / Shadowsocks / VLESS Reality / Direct（端口转发）
-- **精简核心**：自编译 sing-box，只保留所需功能（`with_quic` / `with_utls` / `with_acme`），二进制 amd64 **41 MB** / arm64 **38 MB**（官方版 81 MB），待机内存约 **38 MB**；64M 内存 / 128M 磁盘的小机器轻负载可跑
-- **纯 IPv6 友好**：脚本、核心、工具全部托管在 Cloudflare 双栈源，纯 v6 机器首次安装不依赖 GitHub；检测到无 IPv4 出口时自动建立常驻 IPv4 出口（usque + Cloudflare WARP）
-- **首次安装极简**：只问节点地址（IP 或域名，回车自动检测），端口随机生成，装完直接给出节点链接和客户端配置
-- **输出完整**：每个节点都给分享链接 + sing-box 客户端格式（JSON，可直接粘进客户端配置的 outbounds）
-- **全菜单管理**：装完后运行 `sb` 进入管理菜单，节点的增删改查、改端口 / 密码 / UUID 都在菜单里完成
-- **多系统兼容**：Debian / Ubuntu / Alpine 等，支持 systemd / OpenRC，无 init 系统时自动用 nohup + cron 兜底
+- **8 种常用协议**
+- **精简核心**：64M 内存 / 128M 磁盘的小机器轻负载可跑
+- **纯 IPv6 友好**：纯 v6 机器首次安装不依赖 GitHub
+- **首次安装极简**：装完直接给出节点链接和客户端配置
+- **输出完整**：节点分享链接 + JSON
+- **全菜单管理**：运行 `sb` 进入管理菜单
+- **多系统兼容**：Debian / Ubuntu / Alpine 等
 
 ## 快速安装
 需要 root 权限：
