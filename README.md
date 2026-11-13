@@ -97,6 +97,12 @@ sb
 | `core/` | 精简核心文件（gz + sha256）与版本清单 `latest.txt` |
 | `tools/` | usque 工具（纯 IPv6 机器建 IPv4 出口用） |
 | `README.md` | 本文件 |
+| `LICENSE` | MIT 许可证 |
+
+## 许可证与源码
+
+- 本仓库的脚本（`install.sh`、`sb`、`build-slim.sh`）以 MIT 许可证开源，见 `LICENSE` 文件。
+- 仓库内分发的 sing-box 精简核心基于 [SagerNet/sing-box](https://github.com/SagerNet/sing-box/tree/v1.14.4) v1.14.4 官方源码、按 `build-slim.sh` 配方编译，遵循 GPL-3.0 许可证；usque 工具遵循其上游许可证。
 
 ## 注意事项
 
