@@ -2129,6 +2129,7 @@ prefer_ipv6) printf '\033[32mIPv6 优先\033[0m\n';;
 esac
 }
 
+
 set_egress_strategy() {
 printf '%s\n' "$1" > "$EGRESS_FILE" || die "写入出口偏好失败"
 assemble_config
