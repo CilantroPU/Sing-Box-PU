@@ -382,6 +382,25 @@ URL_SLIM_JSD="https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/core/v${SI
 mkdir -p "$INSTALL_DIR"
 if ! "$BIN" version 2>/dev/null | grep -q "$SINGBOX_VERSION"; then
   cd /tmp
+  # 核心选择: 回车 = 精简版 (默认); 输入任意字符 = 官方版本 (同版本号); 选择记入 core_type, 更新内核时沿用
+  CORE_TYPE="slim"
+  printf "核心选择: 回车安装精简版 (默认), 输入任意字符安装官方版本: "
+  read_tty CORE_INPUT
+  [ -n "$CORE_INPUT" ] && CORE_TYPE="official"
+  _core_done=""
+  if [ "$CORE_TYPE" = "official" ]; then
+    info "下载 sing-box $SINGBOX_VERSION 官方版 ($ARCH)..."
+    if curl -fL --connect-timeout 20 -o "$TARBALL" "$URL_GH" || { warn "GitHub 直连失败, 尝试 gh-proxy 镜像..."; curl -fL --connect-timeout 20 -o "$TARBALL" "$URL_MIRROR"; }; then
+      if tar -xzf "$TARBALL" && cp "sing-box-${SINGBOX_VERSION}-linux-${ARCH}/sing-box" "$BIN"; then
+        chmod +x "$BIN"
+        _core_done=1
+        info "官方版本核心安装完成"
+      fi
+    fi
+    rm -rf "$TARBALL" "sing-box-${SINGBOX_VERSION}-linux-${ARCH}"
+    [ -n "$_core_done" ] || warn "官方版本下载失败, 回退精简版..."
+  fi
+  if [ -z "$_core_done" ]; then
   # 精简版核心: 主源 GitHub 仓库, 依次经 sb.shabby.skin 反代、jsDelivr 兜底 (双栈, 纯 IPv6 机器可达); 均做 sha256 校验
   info "下载 sing-box $SINGBOX_VERSION 精简版 ($ARCH)..."
   _slim_ok=""
@@ -412,6 +431,8 @@ if ! "$BIN" version 2>/dev/null | grep -q "$SINGBOX_VERSION"; then
     chmod +x "$BIN"
     rm -rf "$TARBALL" "sing-box-${SINGBOX_VERSION}-linux-${ARCH}"
   fi
+  fi
+  printf '%s\n' "$CORE_TYPE" > "$INSTALL_DIR/core_type"
 else
   info "sing-box $SINGBOX_VERSION 已安装, 跳过下载"
 fi
@@ -655,6 +676,7 @@ set -e
 INSTALL_DIR="/opt/sing-box-nodes"
 CONF_DIR="$INSTALL_DIR/conf"
 EGRESS_FILE="$INSTALL_DIR/domain_strategy"
+CORE_TYPE_FILE="$INSTALL_DIR/core_type"
 BIN="/usr/local/bin/sing-box"
 SVC_NAME="sing-box-nodes"
 SNI="www.amazon.com"
@@ -1879,12 +1901,16 @@ read_tty ANS
 case "$ANS" in
 n|N) echo "已退出"; exit 0;;
 esac
+# 核心类型沿用安装时的选择 (精简版/官方版本), 记录在 core_type 文件; 无记录默认精简版
+_ctype=""
+[ -f "$CORE_TYPE_FILE" ] && _ctype=$(cat "$CORE_TYPE_FILE" 2>/dev/null)
+case "$_ctype" in official|slim) ;; *) _ctype="slim" ;; esac
 # 精简版核心主源为 GitHub 仓库 (core/ 目录), sb.shabby.skin 反代与 jsDelivr 为双栈兜底; 版本以仓库清单为准
 LATEST=$(curl -fsSL --max-time 15 "https://raw.githubusercontent.com/CilantroPU/Sing-Box-PU/main/core/latest.txt" 2>/dev/null | tr -d ' \r\n')
 [ -n "$LATEST" ] || LATEST=$(curl -fsSL --max-time 15 "https://sb.shabby.skin/core/latest.txt" 2>/dev/null | tr -d ' \r\n')
 [ -n "$LATEST" ] || LATEST=$(curl -fsSL --max-time 15 "https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/core/latest.txt" 2>/dev/null | tr -d ' \r\n')
-[ -n "$LATEST" ] || die "获取精简版最新版本失败"
-echo "精简版最新版本: v$LATEST"
+[ -n "$LATEST" ] || die "获取最新版本失败"
+if [ "$_ctype" = "official" ]; then echo "最新版本: v$LATEST (官方版本)"; else echo "精简版最新版本: v$LATEST"; fi
 if [ "$LATEST" = "$CUR_VER" ]; then
 echo "已是最新版本, 无需更新"
 return
@@ -1897,6 +1923,7 @@ esac
 TMPD=$(mktemp -d)
 NEWBIN="$TMPD/sing-box"
 SLIM_OK=""
+if [ "$_ctype" != "official" ]; then
 for URL in "https://raw.githubusercontent.com/CilantroPU/Sing-Box-PU/main/core/v$LATEST/sing-box-linux-$ARCH.gz" "https://sb.shabby.skin/core/v$LATEST/sing-box-linux-$ARCH.gz" "https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/core/v$LATEST/sing-box-linux-$ARCH.gz"; do
 echo "下载精简版核心: $URL"
 if curl -fsSL --max-time 120 -o "$TMPD/sb.gz" "$URL" \
@@ -1909,8 +1936,9 @@ break
 fi
 rm -f "$TMPD/sb.gz" "$TMPD/sb.sha256"
 done
+fi
 if [ -z "$SLIM_OK" ]; then
-echo "精简版下载失败, 回退 GitHub 官方版..."
+if [ "$_ctype" = "official" ]; then echo "下载官方版本核心..."; else echo "精简版下载失败, 回退 GitHub 官方版..."; fi
 TARBALL="$TMPD/sing-box.tar.gz"
 GHURL="https://github.com/SagerNet/sing-box/releases/download/v$LATEST/sing-box-$LATEST-linux-$ARCH.tar.gz"
 if ! curl -fsSL --max-time 120 -o "$TARBALL" "$GHURL"; then
@@ -2095,8 +2123,8 @@ jq -r '.dns.strategy // ""' "$INSTALL_DIR/config.json" 2>/dev/null
 
 egress_label() {
 case "$(egress_current)" in
-prefer_ipv4) echo "IPv4 优先";;
-prefer_ipv6) echo "IPv6 优先";;
+prefer_ipv4) printf '\033[32mIPv4 优先\033[0m\n';;
+prefer_ipv6) printf '\033[32mIPv6 优先\033[0m\n';;
 *) echo "未设置 (默认)";;
 esac
 }
