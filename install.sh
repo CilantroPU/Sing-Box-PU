@@ -549,7 +549,10 @@ EOF
 assemble_config() {
   set -- "$CONF_DIR"/*.json
   [ -f "$1" ] || die "conf/ 下没有任何节点碎片"
-  jq -s '{log: {level: "info", timestamp: true}, inbounds: ., outbounds: [{type: "direct", tag: "direct"}], route: {final: "direct"}}' "$CONF_DIR"/*.json > "$INSTALL_DIR/config.json" \
+  _strat=""
+  [ -f "$INSTALL_DIR/domain_strategy" ] && _strat=$(cat "$INSTALL_DIR/domain_strategy" 2>/dev/null)
+  case "$_strat" in prefer_ipv4|prefer_ipv6) ;; *) _strat="" ;; esac
+  jq -s --arg strat "$_strat" '({log: {level: "info", timestamp: true}, inbounds: ., outbounds: [{type: "direct", tag: "direct"}], route: {final: "direct"}} + (if $strat != "" then {dns: {strategy: $strat}} else {} end))' "$CONF_DIR"/*.json > "$INSTALL_DIR/config.json" \
     || die "合并配置失败"
   "$BIN" check -c "$INSTALL_DIR/config.json" || die "配置校验失败"
 }
@@ -644,17 +647,18 @@ info "安装管理脚本: /usr/local/bin/sb"
 cat > /usr/local/bin/sb <<'SB_EOF'
 #!/bin/sh
 # sing-box 节点管理脚本 (sb)
-# 菜单: 1) 添加配置 2) 更改配置 3) 查看配置 4) 删除配置 5) 运行管理 6) 版本更新 (更新内核/更新脚本) 7) 安装加速 (BBR/eBPF) 8) 卸载脚本
+# 菜单: 1) 添加配置 2) 更改配置 3) 查看配置 4) 删除配置 5) 运行管理 6) 版本更新 (更新内核/更新脚本) 7) 安装加速 (BBR/eBPF) 8) 出口切换 (IPv4/IPv6 优先) 9) 卸载脚本
 # 支持的协议 (7 种): VLESS Reality / Hysteria2 / TUIC / AnyTLS / Shadowsocks(aes-256-gcm/2022-blake3-aes-256-gcm) / Snell v6 / Direct(端口转发, TCP+UDP)
 # 用法: sb (无参数出菜单)
 set -e
 
 INSTALL_DIR="/opt/sing-box-nodes"
 CONF_DIR="$INSTALL_DIR/conf"
+EGRESS_FILE="$INSTALL_DIR/domain_strategy"
 BIN="/usr/local/bin/sing-box"
 SVC_NAME="sing-box-nodes"
 SNI="www.amazon.com"
-SB_VERSION="5.18"
+SB_VERSION="5.19"
 
 info() { printf '[+] %s\n' "$*"; }
 warn() { printf '[!] %s\n' "$*" >&2; }
@@ -944,7 +948,10 @@ done
 assemble_config() {
 set -- "$CONF_DIR"/*.json
 [ -f "$1" ] || die "conf/ 下没有任何节点碎片"
-jq -s '{log: {level: "info", timestamp: true}, inbounds:., outbounds: [{type: "direct", tag: "direct"}], route: {final: "direct"}}' "$CONF_DIR"/*.json > "$INSTALL_DIR/config.json" \
+_strat=""
+[ -f "$EGRESS_FILE" ] && _strat=$(cat "$EGRESS_FILE" 2>/dev/null)
+case "$_strat" in prefer_ipv4|prefer_ipv6) ;; *) _strat="" ;; esac
+jq -s --arg strat "$_strat" '({log: {level: "info", timestamp: true}, inbounds:., outbounds: [{type: "direct", tag: "direct"}], route: {final: "direct"}} + (if $strat != "" then {dns: {strategy: $strat}} else {} end))' "$CONF_DIR"/*.json > "$INSTALL_DIR/config.json" \
 || die "合并配置失败"
 "$BIN" check -c "$INSTALL_DIR/config.json" || die "配置校验失败"
 }
@@ -1383,7 +1390,7 @@ echo " 5) Hysteria2"
 echo " 6) Shadowsocks"
 echo " 7) VLESS Reality"
 echo " 8) Direct (端口转发)"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-8]: "
 read_tty PICK
 case "$PICK" in
@@ -1562,7 +1569,7 @@ _n=$(node_count)
 echo ""
 echo "请选择要更改的节点:"
 list_nodes
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-%s]: " "$_n"
 read_tty PICK
 case "$PICK" in
@@ -1582,7 +1589,7 @@ echo " 1) 端口"
 echo " 2) UUID"
 echo " 3) Reality 密钥 (重新生成)"
 echo " 4) Short ID"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-4]: "
 read_tty FIELD
 case "$FIELD" in
@@ -1616,7 +1623,7 @@ esac
 hysteria2)
 echo " 1) 端口"
 echo " 2) 密码"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-2]: "
 read_tty FIELD
 case "$FIELD" in
@@ -1630,7 +1637,7 @@ tuic)
 echo " 1) 端口"
 echo " 2) UUID"
 echo " 3) 密码"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-3]: "
 read_tty FIELD
 case "$FIELD" in
@@ -1644,7 +1651,7 @@ esac
 anytls)
 echo " 1) 端口"
 echo " 2) 密码"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-2]: "
 read_tty FIELD
 case "$FIELD" in
@@ -1657,7 +1664,7 @@ esac
 naive)
 echo " 1) 端口"
 echo " 2) 密码"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-2]: "
 read_tty FIELD
 case "$FIELD" in
@@ -1670,7 +1677,7 @@ esac
 shadowsocks)
 echo " 1) 端口"
 echo " 2) 密码"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-2]: "
 read_tty FIELD
 case "$FIELD" in
@@ -1689,7 +1696,7 @@ esac
 snell)
 echo " 1) 端口"
 echo " 2) PSK"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-2]: "
 read_tty FIELD
 case "$FIELD" in
@@ -1703,7 +1710,7 @@ direct)
 echo " 1) 端口"
 echo " 2) 目标地址"
 echo " 3) 目标端口"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-3]: "
 read_tty FIELD
 case "$FIELD" in
@@ -1736,7 +1743,7 @@ echo ""
 echo "请选择要查看的节点:"
 list_nodes
 echo " a) 查看全部"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-%s / a]: " "$_n"
 read_tty PICK
 case "$PICK" in
@@ -1764,13 +1771,13 @@ do_del() {
 _n=$(node_count)
 [ "$_n" -gt 0 ] || { echo "暂无节点"; return; }
 if [ "$_n" -le 1 ]; then
-echo "只剩最后一个节点, 不能删除 (要清空请用 8) 卸载脚本)"
+echo "只剩最后一个节点, 不能删除 (要清空请用 9) 卸载脚本)"
 return
 fi
 echo ""
 echo "请选择要删除的节点:"
 list_nodes
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-%s]: " "$_n"
 read_tty PICK
 case "$PICK" in
@@ -1802,7 +1809,7 @@ echo "请选择操作:"
 echo " 1) 启动"
 echo " 2) 停止"
 echo " 3) 重启"
-echo " 0) 返回"
+echo " 0) 退出"
 printf "请选择 [0-3]: "
 read_tty ACT
 case "$ACT" in
@@ -1820,7 +1827,7 @@ do_update_menu() {
   echo "请选择操作:"
   echo "  1) 更新内核"
   echo "  2) 更新脚本"
-  echo "  0) 返回"
+  echo "  0) 退出"
   printf "请选择 [0-2]: "
   read_tty UACT
   case "$UACT" in
@@ -1932,7 +1939,7 @@ do_accel_menu() {
   echo "请选择加速:"
   echo "  1) BBR"
   echo "  2) eBPF"
-  echo "  0) 返回"
+  echo "  0) 退出"
   printf "请选择 [0-2]: "
   read_tty AACT
   case "$AACT" in
@@ -1980,14 +1987,14 @@ do_accel_bbr() {
 }
 
 do_accel_skyline() {
-  echo "正在安装 Skyline 加速..."
-  echo "提示: 源码编译约需 5-10 分钟, 请耐心等待。"
+  echo "正在安装 eBPF 加速..."
+  echo "提示: eBPF 为源码编译安装, 约需 1 - 3 分钟, 请耐心等待。"
   if [ -x /usr/local/sbin/skyline-speederd ]; then
-    echo "Skyline 已安装 ($(skyline-speederd --version 2>/dev/null | awk '{print $2}'))"
+    echo "eBPF 已安装 ($(skyline-speederd --version 2>/dev/null | awk '{print $2}'))"
     return
   fi
   if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-    echo "本台机器不适合安装 Skyline: 缺少 curl/wget"
+    echo "本台机器不适合安装 eBPF: 缺少 curl/wget"
     return
   fi
   _skyline_ok() { [ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "skyline_cc" ]; }
@@ -2010,9 +2017,9 @@ do_accel_skyline() {
     fi
   fi
   if _skyline_ok; then
-    echo "Skyline 安装成功, 当前拥塞控制: skyline_cc"
+    echo "eBPF 安装成功, 当前拥塞控制: skyline_cc"
   else
-    echo "Skyline 未启用 (本台机器可能不适合, 详见 /var/log/skyline-speeder-install.log)"
+    echo "eBPF 未启用 (本台机器可能不适合, 详见 /var/log/skyline-speeder-install.log)"
   fi
 }
 
@@ -2024,10 +2031,10 @@ _skyline_dl() {
   fi
 }
 
-# ---------- 8) 卸载脚本 ----------
+# ---------- 9) 卸载脚本 ----------
 do_uninstall() {
 echo ""
-echo "卸载将删除: 服务、sing-box 二进制、/opt/sing-box-nodes (含全部节点配置与证书)、sb 管理命令，以及已安装的加速 (BBR / Skyline)。"
+echo "卸载将删除: 服务、sing-box 二进制、/opt/sing-box-nodes (含全部节点配置与证书)、sb 管理命令，以及已安装的加速 (BBR / eBPF)。"
 printf "确定卸载吗? [y/N] (回车默认不卸载): "
 read_tty ANS
 case "$ANS" in
@@ -2043,7 +2050,7 @@ if [ -x /usr/local/sbin/skyline-speederd ] || [ -d /usr/local/src/skyline-speede
   elif command -v wget >/dev/null 2>&1; then
     wget -qO- https://raw.githubusercontent.com/CYBERVERSE-Research/skyline-speeder/main/scripts/bootstrap.sh | SKYLINE_FEEDBACK=no sh -s -- --uninstall 2>/dev/null || true
   fi
-  echo "已清理 Skyline 加速"
+  echo "已清理 eBPF 加速"
 fi
 if [ -f /etc/sysctl.d/99-singbox-bbr.conf ]; then
   rm -f /etc/sysctl.d/99-singbox-bbr.conf
@@ -2081,6 +2088,43 @@ echo "已卸载"
 exit 0
 }
 
+# ---------- 8) 出口切换 ----------
+egress_current() {
+jq -r '.dns.strategy // ""' "$INSTALL_DIR/config.json" 2>/dev/null
+}
+
+egress_label() {
+case "$(egress_current)" in
+prefer_ipv4) echo "IPv4 优先";;
+prefer_ipv6) echo "IPv6 优先";;
+*) echo "未设置 (默认)";;
+esac
+}
+
+set_egress_strategy() {
+printf '%s\n' "$1" > "$EGRESS_FILE" || die "写入出口偏好失败"
+assemble_config
+restart_service_wait || echo "警告: 服务重启后未确认稳定运行, 请到运行管理里检查"
+echo "已切换, 当前出口: $(egress_label)"
+}
+
+do_egress_menu() {
+echo ""
+echo "当前出口: $(egress_label)"
+echo "请选择出口:"
+echo "  1) IPv4 优先"
+echo "  2) IPv6 优先"
+echo "  0) 退出"
+printf "请选择 [0-2]: "
+read_tty EACT
+case "$EACT" in
+1) set_egress_strategy prefer_ipv4;;
+2) set_egress_strategy prefer_ipv6;;
+0) return;;
+*) echo "无效选择"; return;;
+esac
+}
+
 # ---------- 菜单 ----------
 show_menu() {
 echo ""
@@ -2101,9 +2145,10 @@ echo " 4) 删除配置"
 echo " 5) 运行管理"
 echo " 6) 版本更新"
 echo " 7) 安装加速"
-echo " 8) 卸载脚本"
+echo " 8) 出口切换"
+echo " 9) 卸载脚本"
 echo "======================================"
-printf "请选择 [1-8]: "
+printf "请选择 [1-9]: "
 read_tty CHOICE
 case "$CHOICE" in
 1) do_add;;
@@ -2113,7 +2158,8 @@ case "$CHOICE" in
 5) do_manage;;
 6) do_update_menu;;
 7) do_accel_menu;;
-8) do_uninstall;;
+8) do_egress_menu;;
+9) do_uninstall;;
 *) echo "无效选择";;
 esac
 }
