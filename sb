@@ -1448,11 +1448,12 @@ jq -r '.dns.strategy // ""' "$INSTALL_DIR/config.json" 2>/dev/null
 
 egress_label() {
 case "$(egress_current)" in
-prefer_ipv4) echo "IPv4 优先";;
-prefer_ipv6) echo "IPv6 优先";;
+prefer_ipv4) printf '\033[32mIPv4 优先\033[0m\n';;
+prefer_ipv6) printf '\033[32mIPv6 优先\033[0m\n';;
 *) echo "未设置 (默认)";;
 esac
 }
+
 
 set_egress_strategy() {
 printf '%s\n' "$1" > "$EGRESS_FILE" || die "写入出口偏好失败"
