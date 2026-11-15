@@ -680,7 +680,7 @@ CORE_TYPE_FILE="$INSTALL_DIR/core_type"
 BIN="/usr/local/bin/sing-box"
 SVC_NAME="sing-box-nodes"
 SNI="www.amazon.com"
-SB_VERSION="5.19"
+SB_VERSION="1.0.5"
 
 info() { printf '[+] %s\n' "$*"; }
 warn() { printf '[!] %s\n' "$*" >&2; }
