@@ -12,7 +12,7 @@ CORE_TYPE_FILE="$INSTALL_DIR/core_type"
 BIN="/usr/local/bin/sing-box"
 SVC_NAME="sing-box-nodes"
 SNI="www.amazon.com"
-SB_VERSION="1.0.5"
+SB_VERSION="1.0.6"
 
 info() { printf '[+] %s\n' "$*"; }
 warn() { printf '[!] %s\n' "$*" >&2; }
@@ -554,11 +554,13 @@ case "$_type" in
 vless)
 _uuid=$(jq -r '.users[0].uuid' "$_f")
 _sid=$(jq -r '.tls.reality.short_id[0]' "$_f")
+_sni=$(jq -r '.tls.server_name // empty' "$_f")
+[ -n "$_sni" ] || _sni="$SNI"
 _pub=""
 [ -f "$CONF_DIR/$1.pub" ] && _pub=$(cat "$CONF_DIR/$1.pub")
 [ -z "$_pub" ] && _pub=$(grep "^VLESS Reality:.*PublicKey: " "$INSTALL_DIR/info.txt" 2>/dev/null | sed 's/.*PublicKey: *//' | head -1)
 [ -n "$_pub" ] || { echo "[$1] VLESS Reality: 缺少公钥 (请查看 info.txt)"; return; }
-echo "vless://${_uuid}@${HOST_B}:${_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#$1"
+echo "vless://${_uuid}@${HOST_B}:${_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#$1"
 ;;
 hysteria2)
 _pass=$(jq -r '.users[0].password' "$_f")
@@ -608,11 +610,13 @@ case "$_type" in
 vless)
 _uuid=$(jq -r '.users[0].uuid' "$_f")
 _sid=$(jq -r '.tls.reality.short_id[0]' "$_f")
+_sni=$(jq -r '.tls.server_name // empty' "$_f")
+[ -n "$_sni" ] || _sni="$SNI"
 _pub=""
 [ -f "$CONF_DIR/$1.pub" ] && _pub=$(cat "$CONF_DIR/$1.pub")
 [ -z "$_pub" ] && _pub=$(grep "^VLESS Reality:.*PublicKey: " "$INSTALL_DIR/info.txt" 2>/dev/null | sed 's/.*PublicKey: *//' | head -1)
 [ -n "$_pub" ] || { echo "[$1] VLESS Reality: 缺少公钥, 无法生成客户端格式"; return; }
-jq -n --arg tag "$1" --arg server "$HOST" --argjson port "$_port" --arg uuid "$_uuid" --arg sni "$SNI" --arg pub "$_pub" --arg sid "$_sid" \
+jq -n --arg tag "$1" --arg server "$HOST" --argjson port "$_port" --arg uuid "$_uuid" --arg sni "$_sni" --arg pub "$_pub" --arg sid "$_sid" \
 '{tag: $tag, type: "vless", server: $server, server_port: $port, uuid: $uuid, packet_encoding: "xudp", flow: "xtls-rprx-vision", tls: {enabled: true, insecure: false, server_name: $sni, reality: {enabled: true, public_key: $pub, short_id: $sid}, utls: {enabled: true, fingerprint: "chrome"}}}' | sed 's/^/    /'
 ;;
 hysteria2)
@@ -708,6 +712,19 @@ fi
 fi
 jq_set "$1" --arg pw "$NEWPASS" "$3 = \$pw" || die "修改失败"
 echo "$2 密码改为 $NEWPASS" >> "$INSTALL_DIR/info.txt"
+}
+
+change_sni() {
+# $1=碎片文件 $2=tag (仅 VLESS Reality: server_name 与 handshake.server 必须同步)
+_cur=$(jq -r '.tls.server_name' "$1")
+printf "当前 SNI: %s, 请输入新 SNI (域名, 直接回车=取消): " "$_cur"
+read_tty NEWSNI
+[ -n "$NEWSNI" ] || { echo "已取消修改"; return; }
+case "$NEWSNI" in
+*[!A-Za-z0-9.-]*) echo "SNI 不合法: 只能包含字母/数字/点/连字符"; return;;
+esac
+jq_set "$1" --arg s "$NEWSNI" '.tls.server_name = $s | .tls.reality.handshake.server = $s' || die "修改失败"
+echo "$2 SNI 改为 $NEWSNI" >> "$INSTALL_DIR/info.txt"
 }
 
 change_target_addr() {
@@ -943,8 +960,9 @@ echo " 1) 端口"
 echo " 2) UUID"
 echo " 3) Reality 密钥 (重新生成)"
 echo " 4) Short ID"
+echo " 5) SNI"
 echo " 0) 退出"
-printf "请选择 [0-4]: "
+printf "请选择 [0-5]: "
 read_tty FIELD
 case "$FIELD" in
 1) change_port "$_f" "$TAG";;
@@ -970,6 +988,7 @@ read_tty NEWSID
 jq_set "$_f" --arg s "$NEWSID" '.tls.reality.short_id = [$s]' || die "修改失败"
 echo "$TAG Short ID 改为 $NEWSID" >> "$INSTALL_DIR/info.txt"
 ;;
+5) change_sni "$_f" "$TAG";;
 0) return;;
 *) echo "无效选择"; return;;
 esac
