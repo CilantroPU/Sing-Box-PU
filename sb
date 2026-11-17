@@ -12,7 +12,7 @@ CORE_TYPE_FILE="$INSTALL_DIR/core_type"
 BIN="/usr/local/bin/sing-box"
 SVC_NAME="sing-box-nodes"
 SNI="www.amazon.com"
-SB_VERSION="1.0.7"
+SB_VERSION="1.0.8"
 
 info() { printf '[+] %s\n' "$*"; }
 warn() { printf '[!] %s\n' "$*" >&2; }
@@ -389,8 +389,21 @@ esac
 }
 
 # ---------- 写碎片 (每个协议一个函数, 参数: tag 端口 凭证...) ----------
+# Reality SNI 随机池 (amazon 有 AAAA; filecloud/pcloud 为纯 IPv4 站, 无 IPv4 出口时强制 amazon)
+pick_reality_sni() {
+if ! have_ipv4; then echo "www.amazon.com"; return; fi
+_n=$(od -An -tu2 -N2 /dev/urandom 2>/dev/null | tr -d ' ')
+[ -z "$_n" ] && _n=0
+case $((_n % 3)) in
+0) echo "www.amazon.com";;
+1) echo "www.filecloud.com";;
+*) echo "www.pcloud.com";;
+esac
+}
+
 write_frag_vless() {
 # $1=tag $2=port $3=uuid $4=private_key $5=short_id
+_sni=$(pick_reality_sni)
 cat > "$CONF_DIR/$1.json" <<EOF
 {
 "type": "vless",
@@ -400,10 +413,10 @@ cat > "$CONF_DIR/$1.json" <<EOF
 "users": [{ "uuid": "$3", "flow": "xtls-rprx-vision"}],
 "tls": {
 "enabled": true,
-"server_name": "$SNI",
+"server_name": "$_sni",
 "reality": {
 "enabled": true,
-"handshake": { "server": "$SNI", "server_port": 443},
+"handshake": { "server": "$_sni", "server_port": 443},
 "private_key": "$4",
 "short_id": ["$5" ]
 }
