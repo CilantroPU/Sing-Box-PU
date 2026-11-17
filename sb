@@ -12,7 +12,7 @@ CORE_TYPE_FILE="$INSTALL_DIR/core_type"
 BIN="/usr/local/bin/sing-box"
 SVC_NAME="sing-box-nodes"
 SNI="www.amazon.com"
-SB_VERSION="1.0.6"
+SB_VERSION="1.0.7"
 
 info() { printf '[+] %s\n' "$*"; }
 warn() { printf '[!] %s\n' "$*" >&2; }
@@ -1198,8 +1198,17 @@ esac
 do_update_menu() {
   echo ""
   echo "请选择操作:"
-  echo "  1) 更新内核"
-  echo "  2) 更新脚本"
+  _cv=$(get_core_version)
+  if [ -n "$_cv" ] && [ -n "$LATEST_CORE_VER" ] && ver_newer "$LATEST_CORE_VER" "$_cv"; then
+    printf "  1) 更新内核\033[32m（可更新）\033[0m\n"
+  else
+    echo "  1) 更新内核"
+  fi
+  if [ -n "$LATEST_SB_VER" ] && ver_newer "$LATEST_SB_VER" "$SB_VERSION"; then
+    printf "  2) 更新脚本\033[32m（可更新）\033[0m\n"
+  else
+    echo "  2) 更新脚本"
+  fi
   echo "  0) 退出"
   printf "请选择 [0-2]: "
   read_tty UACT
@@ -1276,7 +1285,7 @@ NEWBIN="$TMPD/sing-box"
 SLIM_OK=""
 if [ "$_ctype" != "official" ]; then
 for URL in "https://raw.githubusercontent.com/CilantroPU/Sing-Box-PU/main/core/v$LATEST/sing-box-linux-$ARCH.gz" "https://sb.shabby.skin/core/v$LATEST/sing-box-linux-$ARCH.gz" "https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/core/v$LATEST/sing-box-linux-$ARCH.gz"; do
-echo "下载精简版核心: $URL"
+echo "下载精简版核心： $URL"
 if curl -fsSL --max-time 120 -o "$TMPD/sb.gz" "$URL" \
 && curl -fsSL --max-time 30 -o "$TMPD/sb.sha256" "$URL.sha256" \
 && [ "$(sha256sum "$TMPD/sb.gz" | awk '{print $1}')" = "$(awk '{print $1}' "$TMPD/sb.sha256")" ] \
@@ -1505,17 +1514,47 @@ case "$EACT" in
 esac
 }
 
+# ---------- 启动检查脚本更新 ----------
+LATEST_SB_VER=""
+LATEST_CORE_VER=""
+
+ver_newer() {
+  awk -v r="$1" -v l="$2" 'BEGIN { split(r, a, "."); split(l, b, "."); for (i = 1; i <= 3; i++) { if (a[i] + 0 > b[i] + 0) exit 0; if (a[i] + 0 < b[i] + 0) exit 1 } exit 1 }'
+}
+
+check_script_update() {
+  _tmp=$(mktemp) || return
+  if curl -fsSL --connect-timeout 3 --max-time 5 -o "$_tmp" "https://raw.githubusercontent.com/CilantroPU/Sing-Box-PU/main/sb" 2>/dev/null \
+  || curl -fsSL --connect-timeout 3 --max-time 5 -o "$_tmp" "https://sb.shabby.skin/sb" 2>/dev/null \
+  || curl -fsSL --connect-timeout 3 --max-time 5 -o "$_tmp" "https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/sb" 2>/dev/null; then
+    _v=$(sed -n 's/^SB_VERSION="\([0-9][0-9.]*\)"$/\1/p' "$_tmp" | head -1)
+    [ -n "$_v" ] && LATEST_SB_VER="$_v"
+  fi
+  if curl -fsSL --connect-timeout 3 --max-time 5 -o "$_tmp" "https://raw.githubusercontent.com/CilantroPU/Sing-Box-PU/main/core/latest.txt" 2>/dev/null \
+  || curl -fsSL --connect-timeout 3 --max-time 5 -o "$_tmp" "https://sb.shabby.skin/core/latest.txt" 2>/dev/null \
+  || curl -fsSL --connect-timeout 3 --max-time 5 -o "$_tmp" "https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/core/latest.txt" 2>/dev/null; then
+    _v=$(tr -d ' \r\n' < "$_tmp")
+    case "$_v" in *[!0-9.]*) _v="";; esac
+    [ -n "$_v" ] && LATEST_CORE_VER="$_v"
+  fi
+  rm -f "$_tmp"
+}
+
 # ---------- 菜单 ----------
 show_menu() {
 echo ""
 echo "========== 自用 sing-box 脚本 v$SB_VERSION =========="
+  echo ""
   _ver=$(get_core_version)
   [ -n "$_ver" ] || _ver="(未知)"
-  echo "当前版本:  sing-box $_ver"
+  _ctype=""
+  [ -f "$CORE_TYPE_FILE" ] && _ctype=$(cat "$CORE_TYPE_FILE" 2>/dev/null)
+  if [ "$_ctype" = "official" ]; then _ctname="原版"; else _ctname="精简"; fi
+  echo "核心：  Sing-Box $_ver $_ctname"
   if svc_is_active; then
-    printf "运行状态:  \033[32mrunning\033[0m\n"
+    printf "状态：  \033[32mrunning\033[0m\n"
   else
-    printf "运行状态:  \033[31mstopping\033[0m\n"
+    printf "状态：  \033[31mstopping\033[0m\n"
   fi
   echo ""
 echo " 1) 添加配置"
@@ -1523,7 +1562,14 @@ echo " 2) 更改配置"
 echo " 3) 查看配置"
 echo " 4) 删除配置"
 echo " 5) 运行管理"
-echo " 6) 版本更新"
+_upd=""
+  if [ -n "$LATEST_SB_VER" ] && ver_newer "$LATEST_SB_VER" "$SB_VERSION"; then _upd=1; fi
+  if [ "$_ver" != "(未知)" ] && [ -n "$LATEST_CORE_VER" ] && ver_newer "$LATEST_CORE_VER" "$_ver"; then _upd=1; fi
+  if [ -n "$_upd" ]; then
+    printf " 6) 版本更新\033[32m（可更新）\033[0m\n"
+  else
+    echo " 6) 版本更新"
+  fi
 echo " 7) 安装加速"
 echo " 8) 出口切换"
 echo " 9) 卸载脚本"
@@ -1544,4 +1590,5 @@ case "$CHOICE" in
 esac
 }
 
+check_script_update
 show_menu
