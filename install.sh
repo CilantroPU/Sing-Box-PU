@@ -437,6 +437,17 @@ else
   info "sing-box $SINGBOX_VERSION 已安装, 跳过下载"
 fi
 
+# 屏蔽国内规则集 (菜单 8 开关用): 随仓库分发, 预先下载到本地; 失败不阻塞安装, 开启时 sb 会再补下载
+mkdir -p "$INSTALL_DIR/rules"
+for _rf in geosite-cn.srs geoip-cn.srs; do
+  if [ ! -s "$INSTALL_DIR/rules/$_rf" ]; then
+    curl -fsSL --connect-timeout 20 --max-time 60 -o "$INSTALL_DIR/rules/$_rf" "https://raw.githubusercontent.com/CilantroPU/Sing-Box-PU/main/rules/$_rf" \
+      || curl -fsSL --connect-timeout 20 --max-time 60 -o "$INSTALL_DIR/rules/$_rf" "https://sb.shabby.skin/rules/$_rf" \
+      || curl -fsSL --connect-timeout 20 --max-time 60 -o "$INSTALL_DIR/rules/$_rf" "https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/rules/$_rf" \
+      || rm -f "$INSTALL_DIR/rules/$_rf"
+  fi
+done
+
 # 校验二进制能跑 (Alpine 缺 gcompat 时这里会报 not found)
 if ! "$BIN" version >/dev/null 2>&1; then
   if [ "$OS_ID" = "alpine" ]; then
@@ -586,7 +597,9 @@ assemble_config() {
   _strat=""
   [ -f "$INSTALL_DIR/domain_strategy" ] && _strat=$(cat "$INSTALL_DIR/domain_strategy" 2>/dev/null)
   case "$_strat" in prefer_ipv4|prefer_ipv6) ;; *) _strat="" ;; esac
-  jq -s --arg strat "$_strat" '({log: {level: "info", timestamp: true}, inbounds: ., outbounds: [{type: "direct", tag: "direct"}], route: {final: "direct"}} + (if $strat != "" then {dns: {strategy: $strat}} else {} end))' "$CONF_DIR"/*.json > "$INSTALL_DIR/config.json" \
+  _blockcn=""
+  [ -f "$INSTALL_DIR/block_cn" ] && _blockcn="on"
+  jq -s --arg strat "$_strat" --arg blockcn "$_blockcn" --arg rulesdir "$INSTALL_DIR/rules" '({log: {level: "info", timestamp: true}, inbounds: ., outbounds: [{type: "direct", tag: "direct"}], route: {final: "direct"}} + (if $strat != "" then {dns: {strategy: $strat}} else {} end) + (if $blockcn == "on" then {route: {final: "direct", rule_set: [{type: "local", tag: "geosite-cn", format: "binary", path: ($rulesdir + "/geosite-cn.srs")}, {type: "local", tag: "geoip-cn", format: "binary", path: ($rulesdir + "/geoip-cn.srs")}], rules: [{rule_set: ["geosite-cn", "geoip-cn"], action: "reject"}]}} else {} end))' "$CONF_DIR"/*.json > "$INSTALL_DIR/config.json" \
     || die "合并配置失败"
   "$BIN" check -c "$INSTALL_DIR/config.json" || die "配置校验失败"
 }
@@ -681,7 +694,7 @@ info "安装管理脚本: /usr/local/bin/sb"
 cat > /usr/local/bin/sb <<'SB_EOF'
 #!/bin/sh
 # sing-box 节点管理脚本 (sb)
-# 菜单: 1) 添加配置 2) 更改配置 3) 查看配置 4) 删除配置 5) 运行管理 6) 版本更新 (更新内核/更新脚本) 7) 安装加速 (BBR/eBPF) 8) 出口切换 (IPv4/IPv6 优先) 9) 卸载脚本
+# 菜单: 1) 添加配置 2) 更改配置 3) 查看配置 4) 删除配置 5) 运行管理 6) 版本更新 (更新内核/更新脚本) 7) 安装加速 (BBR/eBPF) 8) 出口设置 (IPv4/IPv6 优先/屏蔽国内) 9) 卸载脚本
 # 支持的协议 (7 种): VLESS Reality / Hysteria2 / TUIC / AnyTLS / Shadowsocks(aes-256-gcm/2022-blake3-aes-256-gcm) / Snell v6 / Direct(端口转发, TCP+UDP)
 # 用法: sb (无参数出菜单)
 set -e
@@ -689,6 +702,8 @@ set -e
 INSTALL_DIR="/opt/sing-box-nodes"
 CONF_DIR="$INSTALL_DIR/conf"
 EGRESS_FILE="$INSTALL_DIR/domain_strategy"
+BLOCKCN_FILE="$INSTALL_DIR/block_cn"
+RULES_DIR="$INSTALL_DIR/rules"
 CORE_TYPE_FILE="$INSTALL_DIR/core_type"
 BIN="/usr/local/bin/sing-box"
 SVC_NAME="sing-box-nodes"
@@ -986,7 +1001,9 @@ set -- "$CONF_DIR"/*.json
 _strat=""
 [ -f "$EGRESS_FILE" ] && _strat=$(cat "$EGRESS_FILE" 2>/dev/null)
 case "$_strat" in prefer_ipv4|prefer_ipv6) ;; *) _strat="" ;; esac
-jq -s --arg strat "$_strat" '({log: {level: "info", timestamp: true}, inbounds:., outbounds: [{type: "direct", tag: "direct"}], route: {final: "direct"}} + (if $strat != "" then {dns: {strategy: $strat}} else {} end))' "$CONF_DIR"/*.json > "$INSTALL_DIR/config.json" \
+_blockcn=""
+[ -f "$BLOCKCN_FILE" ] && _blockcn="on"
+jq -s --arg strat "$_strat" --arg blockcn "$_blockcn" --arg rulesdir "$RULES_DIR" '({log: {level: "info", timestamp: true}, inbounds:., outbounds: [{type: "direct", tag: "direct"}], route: {final: "direct"}} + (if $strat != "" then {dns: {strategy: $strat}} else {} end) + (if $blockcn == "on" then {route: {final: "direct", rule_set: [{type: "local", tag: "geosite-cn", format: "binary", path: ($rulesdir + "/geosite-cn.srs")}, {type: "local", tag: "geoip-cn", format: "binary", path: ($rulesdir + "/geoip-cn.srs")}], rules: [{rule_set: ["geosite-cn", "geoip-cn"], action: "reject"}]}} else {} end))' "$CONF_DIR"/*.json > "$INSTALL_DIR/config.json" \
 || die "合并配置失败"
 "$BIN" check -c "$INSTALL_DIR/config.json" || die "配置校验失败"
 }
@@ -2170,7 +2187,7 @@ echo "已卸载"
 exit 0
 }
 
-# ---------- 8) 出口切换 ----------
+# ---------- 8) 出口设置 ----------
 egress_current() {
 jq -r '.dns.strategy // ""' "$INSTALL_DIR/config.json" 2>/dev/null
 }
@@ -2191,18 +2208,65 @@ restart_service_wait || echo "警告: 服务重启后未确认稳定运行, 请�
 echo "已切换, 当前出口: $(egress_label)"
 }
 
+# 屏蔽国内: 规则集随仓库分发 (rules/*.srs), 装到 $RULES_DIR 本地引用,
+# 不用远程 rule-set, 启动不依赖外网。缺失时按主源->反代->jsDelivr 补下载。
+ensure_rules() {
+mkdir -p "$RULES_DIR" || return 1
+for _rf in geosite-cn.srs geoip-cn.srs; do
+if [ ! -s "$RULES_DIR/$_rf" ]; then
+if curl -fsSL --max-time 60 -o "$RULES_DIR/.$_rf.tmp" "https://raw.githubusercontent.com/CilantroPU/Sing-Box-PU/main/rules/$_rf" \
+|| curl -fsSL --max-time 60 -o "$RULES_DIR/.$_rf.tmp" "https://sb.shabby.skin/rules/$_rf" \
+|| curl -fsSL --max-time 60 -o "$RULES_DIR/.$_rf.tmp" "https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/rules/$_rf"; then
+mv "$RULES_DIR/.$_rf.tmp" "$RULES_DIR/$_rf"
+else
+rm -f "$RULES_DIR/.$_rf.tmp"
+return 1
+fi
+fi
+done
+return 0
+}
+
+blockcn_on() {
+[ -f "$BLOCKCN_FILE" ]
+}
+
+blockcn_label() {
+if blockcn_on; then printf '\033[32m开\033[0m\n'; else echo "关"; fi
+}
+
+set_block_cn() {
+if [ "$1" = "on" ]; then
+echo "正在准备国内规则集..."
+ensure_rules || { echo "规则集下载失败, 未开启屏蔽国内"; return; }
+printf 'on\n' > "$BLOCKCN_FILE" || die "写入屏蔽国内开关失败"
+else
+rm -f "$BLOCKCN_FILE"
+fi
+assemble_config
+restart_service_wait || echo "警告: 服务重启后未确认稳定运行, 请到运行管理里检查"
+if [ "$1" = "on" ]; then
+echo "屏蔽国内已开启: 去往中国大陆的连接 (域名/IP) 将被拒绝"
+else
+echo "屏蔽国内已关闭"
+fi
+}
+
 do_egress_menu() {
 echo ""
 echo "当前出口: $(egress_label)"
-echo "请选择出口:"
+echo "屏蔽国内: $(blockcn_label)"
+echo "请选择:"
 echo "  1) IPv4 优先"
 echo "  2) IPv6 优先"
+echo "  3) 屏蔽国内 开/关"
 echo "  0) 退出"
-printf "请选择 [0-2]: "
+printf "请选择 [0-3]: "
 read_tty EACT
 case "$EACT" in
 1) set_egress_strategy prefer_ipv4;;
 2) set_egress_strategy prefer_ipv6;;
+3) if blockcn_on; then set_block_cn off; else set_block_cn on; fi;;
 0) return;;
 *) echo "无效选择"; return;;
 esac
@@ -2265,7 +2329,7 @@ _upd=""
     echo " 6) 版本更新"
   fi
 echo " 7) 安装加速"
-echo " 8) 出口切换"
+echo " 8) 出口设置"
 echo " 9) 卸载脚本"
 echo "======================================"
 printf "请选择 [1-9]: "
