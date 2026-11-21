@@ -21,13 +21,12 @@ curl -fsSL https://raw.githubusercontent.com/CilantroPU/Sing-Box-PU/main/install
 ```
 ## 纯 IPv6 机器一键脚本
 ```sh
-curl -fsSL https://sb.shabby.skin/install.sh | sh
+curl -fsSL https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/install.sh | sh
 ```
 ## 备用
 ```sh
-curl -fsSL https://cdn.jsdelivr.net/gh/CilantroPU/Sing-Box-PU@main/install.sh | sh
+curl -fsSL https://sb.shabby.skin/install.sh | sh
 ```
-
 
 安装流程：
 
@@ -49,19 +48,20 @@ sb
 |---|---|
 | 1) 添加配置 | 添加新节点（支持 8 种协议） |
 | 2) 更改配置 | 改已有节点的端口 / 密码 / UUID / 转发目标等 |
-| 3) 查看配置 | 查看单个或全部节点的链接 + 客户端格式 |
+| 3) 查看配置 | 查看单个或全部节点的链接 + singbox客户端格式 |
 | 4) 删除配置 | 删除节点 |
 | 5) 运行管理 | 启动 / 停止 / 重启服务 |
-| 6) 版本更新 | 更新 sing-box 核心，或更新脚本本身 |
+| 6) 版本更新 | 更新 sing-box 核心 / 更新脚本 |
 | 7) 安装加速 | BBR / eBPF |
-| 8) 卸载脚本 | 删除服务、二进制、全部节点配置与已装加速 |
+| 8) 出口设置 | IPv4 / IPv6 出口策略调整 | 屏蔽回国流量
+| 9) 卸载脚本 | 删除服务、二进制、全部节点配置与已装加速 |
 
 ### 协议说明（添加顺序）
 
 | # | 协议 | 说明 |
 |---|---|---|
 | 1 | TUIC | QUIC，自签证书，链接可直接导入 |
-| 2 | Naive | **需要域名**：域名须解析到本机、80 端口可达，证书由 Let's Encrypt 自动签发和续期；签发失败会自动回滚本次添加，不留坏节点 |
+| 2 | Naive | **需要域名**：域名须解析到本机、80 端口可达，证书由 Let's Encrypt 自动签发和续期；签发失败会自动回滚本次添加|
 | 3 | AnyTLS | 自签证书 |
 | 4 | Snell v6 | 输出 Surge 配置行 |
 | 5 | Hysteria2 | QUIC，自签证书 |
@@ -71,9 +71,9 @@ sb
 
 ## 纯 IPv6 支持
 
-- **分发双栈可达**：脚本、精简核心、usque 工具都存放在 GitHub 仓库，经 jsDelivr 双栈分发（脚本内部下载也是 GitHub 主源 + jsDelivr 兜底），纯 v6 机器可直达，不必直连只有 IPv4 的 GitHub
-- **自动 IPv4 出口**：安装时检测到机器没有 IPv4 出口，会自动按 usque 方案建立常驻出口：注册 Cloudflare WARP、装 `usque` 系统服务跑隧道、把 IPv4 默认路由指向隧道，节点从此能访问 IPv4 目标站。要求机器有 tun 设备权限（无权限时会明确提示并跳过，不影响安装）。已装机器也可以在菜单 `7) 安装加速 → 3) IPv4 出口` 手动补装；卸载脚本时一并清理
-- **Skyline 兜底**：Skyline 加速需从 GitHub 拉取源码，在纯 v6 且没有 IPv4 出口时，脚本会先用临时 NAT64 解析、再用临时 WARP 通道重试
+- **分发双栈可达**：脚本、精简核心、usque 工具存放于 GitHub 仓库，经 jsDelivr 双栈分发（脚本内部下载也是 GitHub 主源 + jsDelivr 兜底），纯 v6 机器可直达，不必直连只有 IPv4 的 GitHub
+- **自动 IPv4 出口**：安装时检测到机器没有 IPv4 出口，会自动按 usque 方案建立常驻出口：注册 Cloudflare WARP、安装 `usque` 系统服务跑隧道、把 IPv4 默认路由指向隧道，节点从此能访问 IPv4 目标站。要求机器有 tun 设备权限（无权限时会明确提示并跳过，不影响安装）。已装机器也可以在菜单 `7) 安装加速 → 3) IPv4 出口` 手动补装；卸载脚本时一并清理
+- **eBPF 兜底**：eBPF加速从 GitHub 拉取源码，在纯 v6 且没有 IPv4 出口时，脚本会先用临时 NAT64 解析、再用临时 WARP 通道重试
 
 ## 精简核心
 
@@ -83,9 +83,9 @@ sb
 ## 系统要求
 
 - 架构：amd64 / arm64
-- 系统：Debian / Ubuntu / Alpine 等主流发行版（systemd 或 OpenRC；都没有也能装）
+- 系统：Debian / Ubuntu / Alpine 等主流发行版
 - 权限：root
-- Naive 协议另需：一个解析到本机的域名 + 80 端口可达
+- Naive 协议需：一个解析到本机的域名 + 80 端口可达
 
 ## 文件说明
 
@@ -96,8 +96,7 @@ sb
 | `build-slim.sh` | 精简核心编译配方 |
 | `core/` | 精简核心文件（gz + sha256）与版本清单 `latest.txt` |
 | `tools/` | usque 工具（纯 IPv6 机器建 IPv4 出口用） |
-| `README.md` | 本文件 |
-| `LICENSE` | MIT 许可证 |
+
 
 ## 许可证与源码
 
